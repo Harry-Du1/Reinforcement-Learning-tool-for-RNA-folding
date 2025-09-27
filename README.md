@@ -10,8 +10,8 @@ This project instead frames folding as a sequential decision process:
 ```mermaid
 flowchart TD
     A[RNA Sequence Input] --> B[Environment: RNARLEnv]
-    B --> C[Valid Actions (Pair / Skip)]
-    C --> D[Neural Encoder (Graph + Node Features)]
+    B --> C[Valid Actions: Pair / Skip]
+    C --> D[Neural Encoder<br/>(Graph + Node Features)]
     D --> E[Policy & Value Network]
     E --> F[MCTS / Pointer Policy]
     F --> G[Improved Policy]
