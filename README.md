@@ -33,46 +33,94 @@ pip install -e .[torch]
 
 pytest -q
 
-##Documentation
+### Documentation
+## Command Line:
+# random rollout
+python -m scripts.play_random --seq GGGAAACCC
 
-##Reinforcement Learning Essentials  
+# Double Q-learning baseline
+python -m scripts.train_doubleq --seq GCAUCUAG --episodes 2000
+
+# AlphaZero-style training
+python -m scripts.train_az --seq GGGAAACCC --iters 50 --episodes_per_iter 8 --batch 32 --device cpu
+
+## API
+
+# Energy Function
+from rna_rl.energy import TurnerEnergyModel
+E = TurnerEnergyModel()
+print(E.total_energy("GGGAAACCC", [8,-1,-1,-1,-1,-1,-1,-1,0]))
+
+# Double-Q Learning
+from rna_rl.agents.double_q import DoubleQ
+agent = DoubleQ()
+
+# AlphaZero Training
+from rna_rl.learners.az_trainer import AlphaZeroTrainer
+trainer = AlphaZeroTrainer(encoder="graph")
+
+# Visualization:
+from rna_rl.utils.visualize import plot_rainbow
+seq = "GGGAAACCC"
+pairing = [8,-1,-1,-1,-1,-1,-1,-1,0]
+plot_rainbow(seq, pairing, title="Hairpin", save_path="hairpin.png")
+
+## Example Output:
+
+
+### Reinforcement Learning Essentials  
 
 Essential RL ingredients and how they map to RNA folding:
 
-### State Space
+## State Space
 -A state is `(i, pairing)` where:
   - `i` is the current nucleotide index being processed.  
   - `pairing` is a list showing which bases are paired/unpaired so far.  
 - States encode partial RNA structures during construction.
 
-### Action Space
+## Action Space
 - At each nucleotide, the agent can:
   - `skip` (leave nucleotide unpaired), or  
   - `pair(i, j)` with a valid downstream base `j`.  
 - This makes the action set variable-sized, depending on which pairings are legal at each step.
 
-### Reward Function
+## Reward Function
 - Rewards come from energy changes:
   - Positive reward if the structure becomes more stable (energy decreases).  
   - Penalties for illegal or unstable loops.  
   - Final reward includes `-ΔG` of the completed structure.  
 - This encourages the agent to build biophysically favorable structures.
 
-### Value Function 
+## Value Function 
 - The neural network’s value head predicts whether the partial RNA structure can still fold into a stable overall structure.  
 - It helps the search balance short-term vs. long-term energy gains.
 
-### Mathematical Overview
-- Objective: maximize expected return 
-  \n$$ J(\\pi) = \\mathbb{E}_{\\pi} \\left[ \\sum_{t=0}^{T} \\gamma^t r_t \\right] $$  
-  where $r_t$ is the reward at step $t$, and $\\gamma$ is the discount factor.  
+## Mathematical Overview
+**Objective: maximize expected return**
+$$
+J(\pi)=\mathbb{E}_{\pi}\!\left[\sum_{t=0}^{T}\gamma^{t}\, r_t\right]
+$$
+Where \(r_t\) is the reward at step \(t\), and \(\gamma \in [0,1)\) is the discount factor.
 
-- Value Function:  
-  \n$$ V^{\\pi}(s) = \\mathbb{E}_{\\pi} [ R_t \\mid s_t = s ] $$  
+**State-value function**
+$$
+V^{\pi}(s)=\mathbb{E}_{\pi}\!\left[ R_t \mid s_t=s \right]
+$$
 
-- Action-Value Function:  
-  \n$$ Q^{\\pi}(s,a) = \\mathbb{E}_{\\pi} [ R_t \\mid s_t = s, a_t = a ] $$  
+**Action-value function**
+$$
+Q^{\pi}(s,a)=\mathbb{E}_{\pi}\!\left[ R_t \mid s_t=s,\; a_t=a \right]
+$$
 
-- Policy Improvement:  
-  - Traditional: choose $a = \\arg\\max_a Q(s,a)$  
-  - We used MCTS + neural priors to refine the policy at each state.  
+**Policy improvement (greedy)**
+$$
+\pi_{\text{greedy}}(s)=\arg\max_{a}\, Q(s,a)
+$$
+
+- Train the network to match these targets:
+  $$
+  \mathcal{L} = \underbrace{\mathrm{MSE}\!\left(v_\theta,\; z\right)}_{\text{value loss}}
+  \;+\;
+  \underbrace{\mathrm{CE}\!\left(\pi_\theta,\; \hat{\pi}\right)}_{\text{policy loss}}
+  $$
+  where \(z\) is the final return proxy (e.g., \(-E_{\text{final}}\)), \(\hat{\pi}\) comes from MCTS, and \((v_\theta,\pi_\theta)\) are the network’s predictions.
