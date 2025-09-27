@@ -5,7 +5,10 @@ This project instead frames folding as a sequential decision process:
 - At each step, the agent decides to **pair** or **skip** a nucleotide.  
 - A **Turner-like energy model** provides rewards based on energy stacking/hairpins/loops of a particular structure.  
 - A **policy + value neural network** guides MCTS search (like AlphaZero), inspired by the following paper: Mao K, Xiao Y. Learning the Fastest RNA Folding Path Based on Reinforcement Learning and Monte Carlo Tree Search. Molecules. 2021 Jul 22;26(15):4420. doi: 10.3390/molecules26154420. PMID: 34361572; PMCID: PMC8347524.
-- The distinction this program made from the 2dRNAFold algorithm is by flexible state space. This program used Pointer-based policy supports variable-length RNAs, and can model infinite(continuous) state space for large RNAs. 
+- The distinction this program made from the 2dRNAFold algorithm is by
+      1. Flexible state space. This program used Pointer-based policy supports variable-length RNAs, and can model infinite(continuous) state space for large RNAs.
+      2. Reward Function. 2dRNA-Fold have their reward function based on folding steps, while this program focused on thermodynamically preferable structure. (Not garentee MFE)
+      3. 2dRNA-Fold focused on folding trajectory, while this program focused on the final structure. 
 
 ```mermaid
 flowchart TD
