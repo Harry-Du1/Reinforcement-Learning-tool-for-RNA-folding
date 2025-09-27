@@ -157,9 +157,13 @@ The network is trained to match:
 
 $$
 \mathcal{L} = \underbrace{\mathrm{MSE}(v_\theta, z)}_{\text{value loss}}
+$$
+
+$$
 \;+\;
 \underbrace{\mathrm{CE}(\pi_\theta, \hat{\pi})}_{\text{policy loss}}
 $$
+
 
 where \(z\) is the final return proxy (e.g. \(-E_{\text{final}}\)),  
 \(\hat{\pi}\) comes from MCTS visit counts,  
