@@ -23,7 +23,9 @@ flowchart TD
     K --> L[Rainbow Visualization]
 ```
 ## Installation:
+```Python
 git clone https://github.com/HarryDu-1/Reinforcement-Learning-tool-for-RNA-folding.git
+
 cd Reinforcement-Learning-tool-for-RNA-folding
 
 python -m venv .venv
@@ -32,14 +34,22 @@ source .venv/bin/activate
 pip install -e .[torch]
 
 pytest -q
+```
+### Documentation:
 
-### Documentation
 ## Command Line:
+
 # random rollout
+
+```Python
 python -m scripts.play_random --seq GGGAAACCC
+```
 
 # Double Q-learning baseline
+
+```Python
 python -m scripts.train_doubleq --seq GCAUCUAG --episodes 2000
+```
 
 # AlphaZero-style training
 python -m scripts.train_az --seq GGGAAACCC --iters 50 --episodes_per_iter 8 --batch 32 --device cpu
