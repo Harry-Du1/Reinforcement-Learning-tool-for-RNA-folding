@@ -22,9 +22,7 @@ flowchart TD
     H --> K[Final RNA Structure Prediction]
     K --> L[Rainbow Visualization]
 ```
-
-##Installation:
-# clone the repo
+## Installation:
 git clone https://github.com/HarryDu-1/Reinforcement-Learning-tool-for-RNA-folding.git
 cd Reinforcement-Learning-tool-for-RNA-folding
 
@@ -39,37 +37,33 @@ pytest -q
 
 ##Reinforcement Learning Essentials  
 
-Before diving deeper, here’s a quick primer on the **essential RL ingredients** and how they map to RNA folding:
+Essential RL ingredients and how they map to RNA folding:
 
 ### State Space
-- **General RL:** The “state” represents the environment at a given time.  
-- **Here:** A state is `(i, pairing)` where:
+-A state is `(i, pairing)` where:
   - `i` is the current nucleotide index being processed.  
   - `pairing` is a list showing which bases are paired/unpaired so far.  
-- States encode **partial RNA structures** during construction.
+- States encode partial RNA structures during construction.
 
 ### Action Space
-- **General RL:** Actions are the choices the agent can make.  
-- **Here:** At each nucleotide, the agent can:
+- At each nucleotide, the agent can:
   - `skip` (leave nucleotide unpaired), or  
   - `pair(i, j)` with a valid downstream base `j`.  
-- This makes the action set **variable-sized**, depending on which pairings are legal at each step.
+- This makes the action set variable-sized, depending on which pairings are legal at each step.
 
 ### Reward Function
-- **General RL:** Rewards guide learning by assigning value to outcomes.  
-- **Here:** Rewards come from **energy changes**:
+- Rewards come from energy changes:
   - Positive reward if the structure becomes more stable (energy decreases).  
   - Penalties for illegal or unstable loops.  
   - Final reward includes `-ΔG` of the completed structure.  
-- This encourages the agent to build **biophysically favorable structures**.
+- This encourages the agent to build biophysically favorable structures.
 
-### Value Function
-- **General RL:** Estimates the **expected return** (long-term reward) from a state.  
-- **Here:** The neural network’s **value head** predicts whether the partial RNA structure can still fold into a stable overall structure.  
-- It helps the search balance **short-term vs. long-term energy gains**.
+### Value Function 
+- The neural network’s value head predicts whether the partial RNA structure can still fold into a stable overall structure.  
+- It helps the search balance short-term vs. long-term energy gains.
 
 ### Mathematical Overview
-- Objective: maximize **expected return**  
+- Objective: maximize expected return 
   \n$$ J(\\pi) = \\mathbb{E}_{\\pi} \\left[ \\sum_{t=0}^{T} \\gamma^t r_t \\right] $$  
   where $r_t$ is the reward at step $t$, and $\\gamma$ is the discount factor.  
 
@@ -81,4 +75,4 @@ Before diving deeper, here’s a quick primer on the **essential RL ingredients*
 
 - Policy Improvement:  
   - Traditional: choose $a = \\arg\\max_a Q(s,a)$  
-  - Here: use **MCTS + neural priors** to refine the policy at each state.  
+  - We used MCTS + neural priors to refine the policy at each state.  
