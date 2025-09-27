@@ -11,30 +11,21 @@ This project instead frames folding as a sequential decision process:
       3. 2dRNA-Fold focused on folding trajectory, while this program focused on the final structure. 
 
 ```mermaid
-flowchart TB
+flowchart LR
+    A[RNA Sequence Input] --> B[Environment: RNARLEnv]
+    B --> C[Valid Actions: Pair or Skip]
+    C --> D[Encoder: Graph or Simple]
+    D --> E[Policy & Value Network]
+    E --> F[MCTS (Pointer Policy)]
+    F --> G[Improved Policy]
 
-    %% --- Top layer: folding pipeline ---
-    subgraph Top [Folding Pipeline]
-        direction LR
-        A[RNA Sequence Input] --> B[Environment]
-        B --> C[Valid Actions]
-        C --> D[Encoder]
-        D --> E[Policy & Value Net]
-        E --> F[MCTS with Pointer Policy]
-        F --> G[Improved Policy]
-    end
+flowchart LR
+    H[Self-Play Episodes] --> I[Replay Buffer]
+    I --> J[AlphaZero Training Loop]
+    J --> PV[Update Policy & Value Net]
+    H --> K[Final Structure Prediction]
+    K --> L[Rainbow Visualization]
 
-    %% --- Bottom layer: training & output ---
-    subgraph Bottom [Training & Output]
-        direction LR
-        H[Self-Play Episodes] --> I[Replay Buffer]
-        I --> J[AlphaZero Training Loop]
-        J --> E
-        H --> K[Final Structure Prediction]
-        K --> L[Rainbow Visualization]
-    end
-
-    G --> H
 
 ```
 ## Installation:
