@@ -11,7 +11,7 @@ This project instead frames folding as a sequential decision process:
       3. 2dRNA-Fold focused on folding trajectory, while this program focused on the final structure. 
 
 ```mermaid
-flowchart TD
+flowchart LR
     A[RNA Sequence Input] --> B[Environment: RNARLEnv]
     B --> C[Valid Actions: Pair or Skip]
     C --> D[Neural Encoder: Graph or Simple]
