@@ -1,4 +1,4 @@
-## README.md
+# README.md
 RNA folding is usually tackled by dynamic programming and thermodynamic models (e.g., ViennaRNA, RNAstructure).  
 This project instead frames folding as a sequential decision process:  
 
@@ -35,45 +35,55 @@ pip install -e .[torch]
 
 pytest -q
 ```
-### Documentation:
+# Documentation:
 
 ## Command Line:
 
-# random rollout
+### random rollout
 
 ```Python
 python -m scripts.play_random --seq GGGAAACCC
 ```
 
-# Double Q-learning baseline
+### Double Q-learning baseline
 
 ```Python
 python -m scripts.train_doubleq --seq GCAUCUAG --episodes 2000
 ```
 
-# AlphaZero-style training
+### AlphaZero-style training
+```Python
 python -m scripts.train_az --seq GGGAAACCC --iters 50 --episodes_per_iter 8 --batch 32 --device cpu
+```
 
 ## API
 
-# Energy Function
+### Energy Function
+```Python
 from rna_rl.energy import TurnerEnergyModel
 E = TurnerEnergyModel()
 print(E.total_energy("GGGAAACCC", [8,-1,-1,-1,-1,-1,-1,-1,0]))
+```
 
-# Double-Q Learning
+### Double-Q Learning
+```Python
 from rna_rl.agents.double_q import DoubleQ
 agent = DoubleQ()
+```
 
-# AlphaZero Training
+### AlphaZero Training
+```Python
 from rna_rl.learners.az_trainer import AlphaZeroTrainer
 trainer = AlphaZeroTrainer(encoder="graph")
+```
 
-# Visualization:
+### Visualization:
+```Python
 from rna_rl.utils.visualize import plot_rainbow
 seq = "GGGAAACCC"
 pairing = [8,-1,-1,-1,-1,-1,-1,-1,0]
 plot_rainbow(seq, pairing, title="Hairpin", save_path="hairpin.png")
+```
 
 ## Example Output:
 
