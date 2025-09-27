@@ -21,6 +21,7 @@ flowchart TD
     J --> E
     H --> K[Final RNA Structure Prediction]
     K --> L[Rainbow Visualization]
+```
 
 ##Installation:
 # clone the repo
@@ -81,7 +82,3 @@ Before diving deeper, here’s a quick primer on the **essential RL ingredients*
 - Policy Improvement:  
   - Traditional: choose $a = \\arg\\max_a Q(s,a)$  
   - Here: use **MCTS + neural priors** to refine the policy at each state.  
-
----
-
-👉 With these building blocks, RNA folding becomes an **RL game**: sequentially construct base pairs to minimize free energy, guided by rewards and value predictions.
