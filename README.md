@@ -12,18 +12,23 @@ This project instead frames folding as a sequential decision process:
 
 ```mermaid
 flowchart LR
-    A[RNA Sequence Input] --> B[Environment: RNARLEnv]
-    B --> C[Valid Actions: Pair or Skip]
-    C --> D[Neural Encoder: Graph or Simple]
-    D --> E[Policy and Value Network]
-    E --> F[MCTS with Pointer Policy]
-    F --> G[Improved Policy]
-    G --> H[Self-Play Episodes]
-    H --> I[Replay Buffer]
-    I --> J[AlphaZero Training Loop]
-    J --> E
-    H --> K[Final RNA Structure Prediction]
-    K --> L[Rainbow Visualization]
+    subgraph L1 [Layer 1: Policy and Search]
+        A[RNA Sequence Input] --> B[Environment]
+        B --> C[Valid Actions]
+        C --> D[Encoder]
+        D --> E[Policy & Value Net]
+        E --> F[MCTS with Pointer Policy]
+        F --> G[Improved Policy]
+    end
+
+    subgraph L2 [Layer 2: Training and Output]
+        G --> H[Self-Play Episodes]
+        H --> I[Replay Buffer]
+        I --> J[AlphaZero Training Loop]
+        J --> E
+        H --> K[Final Structure Prediction]
+        K --> L[Rainbow Visualization]
+    end
 ```
 ## Installation:
 ```Python
