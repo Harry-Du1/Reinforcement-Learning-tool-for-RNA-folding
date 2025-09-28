@@ -98,7 +98,7 @@ plot_rainbow(seq, pairing, title="Hairpin", save_path="hairpin.png")
 E. coli tRNA-Lys-UUU Seq: CGGGUUAGAUCGAGGUAGGUUAGCAGCACGAGGCAUCCGGUUCGAUCCAACGGGUUUCCACCA
 Resulting Folding Figure: 
 <p align="center">
-  <img src="output.png" alt="Rainbow_Image" width="500">
+  <img src="final.png" alt="Rainbow_Image" width="500">
 </p>
 
 
