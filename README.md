@@ -97,6 +97,10 @@ plot_rainbow(seq, pairing, title="Hairpin", save_path="hairpin.png")
 ## Example Output:
 E. coli tRNA-Lys-UUU Seq: CGGGUUAGAUCGAGGUAGGUUAGCAGCACGAGGCAUCCGGUUCGAUCCAACGGGUUUCCACCA
 Resulting Folding Figure: 
+<p align="center">
+  <img src="output.png" alt="Rainbow_Image" width="500">
+</p>
+
 
 ## Reinforcement Learning Essentials  
 
