@@ -11,24 +11,22 @@ parser.add_argument("--ckpt", type=str, default="checkpoints/dq.pkl")
 parser.add_argument("--out", type=str, default="final.png")
 args = parser.parse_args()
 
-# load agent
 agent = DoubleQ()
 with open(args.ckpt, "rb") as f:
     data = pickle.load(f)
 agent.Q1.update({k: {tuple(a): v for a, v in vv.items()} for k, vv in data["Q1"].items()})
 agent.Q2.update({k: {tuple(a): v for a, v in vv.items()} for k, vv in data["Q2"].items()})
 
-# run greedy
-env = RNARLEnv(args.seq)
+env = RNARLEnv(args.seq)  # <— removed seed
 s = env.reset()
 while True:
     acts = env.valid_actions()
     if not acts:
-        break
-    hs = agent._hash_state(s)
-    # actions were serialized as tuples; env provides same tuples
-    a = max(acts, key=lambda act: agent.Q1[hs][act] + agent.Q2[hs][act])
-    sr = env.step(a)
+        sr = env.step(("pair", None))  # auto-advance
+    else:
+        hs = agent._hash_state(s)
+        a = max(acts, key=lambda act: agent.Q1[hs][act] + agent.Q2[hs][act])
+        sr = env.step(a)
     s = sr.state
     if sr.done:
         print("DB:", sr.info["dot_bracket"], "Energy:", sr.info["energy"])

@@ -6,6 +6,41 @@ import numpy as np
 Action = Tuple[str, Optional[int]]
 
 class DoubleQ:
+    # Add these guards inside your DoubleQ class.
+
+    def act(self, state, actions):
+        # If no legal actions, return a harmless dummy; env will auto-advance.
+        if not actions:
+            return ("pair", None)
+        import random
+        if random.random() < self.eps:
+            return random.choice(actions)
+        hs = self._hash_state(state)
+        # Greedy on Q1+Q2
+        return max(actions, key=lambda a: self.Q1[hs][a] + self.Q2[hs][a])
+
+    def update(self, s, a, r, s_next, next_actions):
+        # Standard Double Q-learning, but handle terminal / no-action next states.
+        hs  = self._hash_state(s)
+        hs2 = self._hash_state(s_next)
+        if not next_actions:
+            target = r      # no bootstrap when no next actions (terminal-like)
+        else:
+            # pick argmax under Q1 then evaluate with Q2 (or vice versa)
+            import random
+            if random.random() < 0.5:
+                a_star = max(next_actions, key=lambda aa: self.Q1[hs2][aa])
+                target = r + self.gamma * self.Q2[hs2][a_star]
+            else:
+                a_star = max(next_actions, key=lambda aa: self.Q2[hs2][aa])
+                target = r + self.gamma * self.Q1[hs2][a_star]
+        # do the update on Q1 or Q2
+        import random
+        if random.random() < 0.5:
+            self.Q1[hs][a] += self.alpha * (target - self.Q1[hs][a])
+        else:
+            self.Q2[hs][a] += self.alpha * (target - self.Q2[hs][a])
+
     def __init__(self, alpha=0.1, gamma=0.99, eps=0.3, eps_min=0.05, eps_decay=0.999, alpha_decay=0.9995, seed: int | None = None):
         self.Q1 = defaultdict(lambda: defaultdict(float))
         self.Q2 = defaultdict(lambda: defaultdict(float))

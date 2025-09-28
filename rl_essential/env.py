@@ -1,9 +1,13 @@
+# rna_rl/env.py
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Dict
-import numpy as np
+from typing import Dict, List, Optional, Tuple
+
 from .energy import TurnerEnergyModel
-from .utils.structures import is_valid_pair, min_hairpin_loop_ok, to_dot_bracket
+from .utils.structures import is_valid_pair, to_dot_bracket
+
+Action = Tuple[str, Optional[int]]  # ("pair", j) only
+
 
 @dataclass
 class StepResult:
@@ -12,83 +16,125 @@ class StepResult:
     done: bool
     info: Dict
 
+
 class RNARLEnv:
-    def __init__(self, seq: str, energy_model: Optional[TurnerEnergyModel] = None, seed: Optional[int] = None):
-        assert all(b in "AUGC" for b in seq), "Sequence must be A/U/G/C"
+    """
+    Pairs-only RNA secondary-structure environment (no explicit 'skip').
+    - No pseudoknots (non-crossing arcs enforced).
+    - If no legal pair exists at position i, env auto-advances i (implicit skip).
+    - Reward = ΔE per step (E_{t-1} - E_t); terminal bonus adds -E_T.
+      With a correctly signed energy model, lower energies are better.
+    """
+
+    def __init__(self, seq: str, energy_model: Optional[TurnerEnergyModel] = None):
+        assert all(b in "AUGC" for b in seq), "Sequence must contain only A/U/G/C"
         self.seq = seq
         self.n = len(seq)
-        self.rng = np.random.default_rng(seed)
         self.energy = energy_model or TurnerEnergyModel()
         self.reset()
 
-    def reset(self):
-        self.i = 0
-        self.pairing = [-1] * self.n
-        self.E = self.energy.total_energy(self.seq, self.pairing)
-        return (self.i, self.pairing.copy())
+    # ---------- helpers (relations) ----------
+    @staticmethod
+    def _cross(i: int, j: int, k: int, l: int) -> bool:
+        """Crossing iff i<k<j<l or k<i<l<j (assume i<j, k<l)."""
+        return (i < k < j < l) or (k < i < l < j)
 
-    @property
-    def state(self):
-        return (self.i, self.pairing.copy())
-
-    def _advance_i(self):
-        while self.i < self.n and self.pairing[self.i] != -1:
-            self.i += 1
-
-    # rna_rl/env.py
-    def _noncrossing_ok(self, i: int, j: int) -> bool:
-        """Ensure adding (i,j) doesn't cross any existing pair (k,l)."""
+    def _pair_allowed(self, i: int, j: int) -> bool:
+        if not (0 <= i < j < self.n):
+            return False
+        # base compatibility
+        if not is_valid_pair(self.seq[i], self.seq[j]):
+            return False
+        # non-crossing against existing pairs
         for k, l in enumerate(self.pairing):
-            if l == -1 or k >= l:  # only check one orientation k<l
+            if l == -1 or not (k < l):
                 continue
-            # crossing if i<k<j and (l<i or l>j)
-            if i < k < j and not (i < l < j):
-                return False
-            # also disallow nesting conflicts with occupied endpoints
-            if (k == i) or (l == j):
+            if self._cross(i, j, k, l):
                 return False
         return True
 
-    def valid_actions(self):
+    # ---------- API ----------
+    def reset(self) -> Tuple[int, List[int]]:
+        self.i = 0
+        self.pairing = [-1] * self.n
+        self.E = self.energy.total_energy(self.seq, self.pairing)
+        # advance i to the first index that *could* pair with someone
+        self._advance_until_candidate()
+        return (self.i, self.pairing.copy())
+
+    @property
+    def state(self) -> Tuple[int, List[int]]:
+        return (self.i, self.pairing.copy())
+
+    def _advance_i(self) -> None:
+        """Advance i to next free site."""
+        while self.i < self.n and self.pairing[self.i] != -1:
+            self.i += 1
+
+    def _advance_until_candidate(self) -> None:
+        """Advance i while no legal pair exists for i (implicit skip)."""
+        while self.i < self.n:
+            if self.pairing[self.i] != -1:
+                self._advance_i()
+                continue
+            has_candidate = any(
+                self._pair_allowed(self.i, j) and self.pairing[j] == -1
+                for j in range(self.i + 1, self.n)
+            )
+            if has_candidate:
+                break
+            self.i += 1  # implicit skip
+        # if i==n, terminal
+
+    def valid_actions(self) -> List[Action]:
+        """Pairs-only actions at current i. Empty => auto-advance on step()."""
         if self.i >= self.n:
             return []
-        acts = [("skip", None)]
+        acts: List[Action] = []
+        # collect pair candidates i<j
         for j in range(self.i + 1, self.n):
             if self.pairing[j] != -1:
                 continue
-            # 1) Watson–Crick / GU pairing only
-            if not is_valid_pair(self.seq[self.i], self.seq[j]):
-                continue
-            # 2) No pseudoknots/crossings
-            if not self._noncrossing_ok(self.i, j):
-                continue
-            # NOTE: do NOT enforce min hairpin loop here; the energy
-            # model already penalizes illegal tiny hairpins when they
-            # are truly hairpins (i.e., no inner stack).
-            acts.append(("pair", j))
+            if self._pair_allowed(self.i, j):
+                acts.append(("pair", j))
         return acts
 
-
-    def step(self, action):
+    def step(self, action: Action) -> StepResult:
+        """Apply ('pair', j) if available; otherwise implicitly advance i."""
         if self.i >= self.n:
             return StepResult(self.state, 0.0, True, {"reason": "done"})
-        a, j = action
+
         old_E = self.E
-        if a == "skip":
+        acts = self.valid_actions()
+
+        if not acts:
+            # no legal pair: implicit skip
             self.i += 1
-            self._advance_i()
-        elif a == "pair":
-            assert j is not None and j > self.i
+            self._advance_until_candidate()
+        else:
+            a, j = action
+            assert a == "pair" and j is not None and j > self.i
             assert self.pairing[self.i] == -1 and self.pairing[j] == -1
+            # final guard: never allow a crossing
+            if not self._pair_allowed(self.i, j):
+                raise ValueError(
+                    f"Invalid pair ({self.i},{j}) attempts crossing with existing "
+                    f"{[(k,l) for k,l in enumerate(self.pairing) if l>k]}"
+                )
+            # commit pair
             self.pairing[self.i] = j
             self.pairing[j] = self.i
+            # move to next actionable i
             self.i += 1
-            self._advance_i()
-        else:
-            raise ValueError(f"Unknown action {action}")
+            self._advance_until_candidate()
+
+        # recompute energy and reward
         self.E = self.energy.total_energy(self.seq, self.pairing)
-        r = (old_E - self.E)
+        reward = (old_E - self.E)  # positive if energy decreased
+
         done = self.i >= self.n
         if done:
-            r += -self.E
-        return StepResult(self.state, r, done, {"dot_bracket": to_dot_bracket(self.pairing), "energy": self.E})
+            reward += -self.E  # terminal bonus: lower final E => larger reward
+
+        info = {"dot_bracket": to_dot_bracket(self.pairing), "energy": self.E}
+        return StepResult(self.state, reward, done, info)

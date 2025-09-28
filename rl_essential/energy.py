@@ -1,124 +1,179 @@
+# rna_rl/energy.py
 from __future__ import annotations
-from typing import List, Dict, Tuple
-import numpy as np
-import json, os
-from .utils.structures import is_valid_pair, min_hairpin_loop_ok, decompose_stems, loop_regions
+import math
+from typing import List, Tuple, Dict
 
-_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+BASES = "AUGC"
+PAIR_OK = {("A","U"),("U","A"),("G","C"),("C","G"),("G","U"),("U","G")}
 
-with open(os.path.join(_DATA_DIR, "turner_stack_2004.json")) as f:
-    TURNER_STACK: Dict[str, Dict[str, float]] = json.load(f)
-with open(os.path.join(_DATA_DIR, "hairpin_special.json")) as f:
-    HAIRPIN_SPECIAL: Dict[str, float] = json.load(f)
+# Very small, approximate Turner-like stack table (kcal/mol).
+# Keys are ((b_i,b_j),(b_ip1,b_jm1)) for stacked pairs (i,j) over (i+1,j-1), 5'->3' on left, 3'->5' on right.
+STACK_DG: Dict[Tuple[Tuple[str,str],Tuple[str,str]], float] = {}
+def _add(sym_left: str, sym_right: str, dg: float):
+    # helper to fill both orientation keys
+    l = (sym_left[0], sym_left[1])
+    r = (sym_right[0], sym_right[1])
+    STACK_DG[(l, r)] = dg
 
-class TurnerEnergyModel:
-    """Approximate Turner-like model.
+# Coarse values (not exhaustive Turner 2004, but sign-correct and reasonable)
+# GC/CG stacks strongest, AU/UA weaker, GU wobble weakest
+_add("GC","CG", -2.4); _add("CG","GC", -2.4)
+_add("GC","GC", -2.3); _add("CG","CG", -2.3)
+_add("AU","UA", -1.1); _add("UA","AU", -1.1)
+_add("AU","UA", -1.1); _add("UA","UA", -1.0)
+_add("GU","UG", -0.9); _add("UG","GU", -0.9)
+# generic fallback for other legal stacks
+DEFAULT_STACK = -1.1
 
-    Includes:
-      - Stacking energies (nearest neighbor)
-      - Hairpins: length penalty + tetraloop bonuses
-      - Internal/Bulge loops: length + asymmetry
-      - Multibranch loops: a + b * unpaired + c * branches
-      - Optional coaxial stacking heuristic
+# Tetraloop bonuses (very rough; negative => stabilizing)
+TETRA_BONUS = {
+    "GNRA": -0.8,  # e.g., GAAA
+    "UNCG": -1.3,  # e.g., UUCG
+    "CUUG": -1.0,
+}
 
-    Units: kcal/mol; lower is better. Constants are approximate.
+def _is_pair(a: str, b: str) -> bool:
+    return (a, b) in PAIR_OK
+
+# --- FIX in energy.py ---
+
+def _helices(pairing: List[int]) -> List[Tuple[int,int,int]]:
+    """Return list of helices as (i0, j0, L) with consecutive (i+k, j-k) pairs."""
+    n = len(pairing)
+    seen = set()
+    helices = []
+    i = 0
+    while i < n:
+        j = pairing[i]
+        if j > i and (i, j) not in seen:
+            L = 1
+            while i+L < j-L and pairing[i+L] == j-L:
+                seen.add((i+L, j-L))
+                L += 1
+            helices.append((i, j, L))
+            i += L
+        else:
+            i += 1
+    return helices
+
+
+def _loops(seq: str, pairing: List[int]) -> Dict[str, List[Tuple]]:
     """
-    def __init__(self, enable_coaxial: bool = True):
-        self.enable_coaxial = enable_coaxial
-        # Multibranch parameters (rough)
-        self.mb_a = 3.4
-        self.mb_b = 0.4
-        self.mb_c = 0.9
-        self.unpaired_penalty = 0.1
+    Decompose into loops around helices: hairpin at helix end, internal/bulge between two helices,
+    multibranch when >2 branches meet. Lightweight parse (sign-correct, not exhaustive).
+    """
+    n = len(seq)
+    helices = _helices(pairing)
+    paired = [p != -1 for p in pairing]
 
-    # --- stacking ---
-    def _stack_key(self, b1: str, b2: str, b3: str, b4: str) -> Tuple[str, str]:
-        return b1 + b2, b3 + b4
+    # Hairpins at helix termini
+    hairpins = []
+    for i, j, L in helices:                     # <-- unpack triples
+        il = i + L
+        jr = j - L
+        if il <= jr and not paired[il] and not paired[jr]:
+            hairpins.append((il, jr))
 
-    def _stack_energy(self, s: str, i: int, j: int, k: int) -> float:
-        # stack layer k on stem (i,j): pairs (i+k, j-k) with (i+k+1, j-k-1)
-        a = s[i+k] + s[j-k]
-        b = s[i+k+1] + s[j-k-1]
-        return TURNER_STACK.get(a, {}).get(b, 0.0)
+    internals = []
+    multibranch = []
 
-    def _hairpin_energy(self, s: str, i: int, j: int) -> float:
-        L = j - i - 1
-        if L < 3:
-            return 10.0
-        core = s[i+1:j]
-        if len(core) == 4 and core in HAIRPIN_SPECIAL:
-            return HAIRPIN_SPECIAL[core]
-        a, b = 3.0, 0.5
-        return a + b * np.log(L)
+    # Mark paired interval coverage from helices (use i..j ranges)
+    visited = [False] * n
+    for i, j, L in helices:                      # <-- unpack triples
+        for k in range(i, j + 1):
+            visited[k] = True
 
-    def _internal_bulge_energy(self, left_len: int, right_len: int) -> float:
-        # symmetric favored; asymmetry penalty
-        L = left_len + right_len
-        if L == 0:
-            return 0.0
-        base = 0.3 * np.log(max(2, L)) + 0.2 * L
-        asym = 0.2 * abs(left_len - right_len)
-        # 1-nt bulge favorable-ish
-        if L == 1:
-            base -= 0.2
-        return base + asym
+    # Scan unpaired runs between paired regions and classify
+    k = 0
+    while k < n:
+        if visited[k] or pairing[k] != -1:
+            k += 1
+            continue
+        start = k
+        while k + 1 < n and (not visited[k + 1]) and pairing[k + 1] == -1:
+            k += 1
+        end = k
 
-    def _multibranch_energy(self, branches: int, unpaired: int) -> float:
-        return self.mb_a + self.mb_b * unpaired + self.mb_c * branches
+        # Look for nearest paired positions around this run
+        left_pair = None
+        right_pair = None
+        li = start - 1
+        ri = end + 1
+        while li >= 0 and pairing[li] == -1:
+            li -= 1
+        while ri < n and pairing[ri] == -1:
+            ri += 1
+        if li >= 0 and pairing[li] > li:
+            left_pair = (li, pairing[li])
+        if ri < n and pairing[ri] > ri:
+            right_pair = (ri, pairing[ri])
 
-    def _coaxial_bonus(self, s: str, stems: List[Tuple[int,int,int]]) -> float:
-        if not self.enable_coaxial:
-            return 0.0
-        # Heuristic: bonus per adjacency of stem ends (not physically rigorous)
-        bonus = 0.0
-        for (i,j,k) in stems:
-            # if two stems share adjacent ends, add small bonus
-            for (i2,j2,k2) in stems:
-                if (i,j) == (i2,j2):
-                    continue
-                if abs(i - i2) <= 1 or abs(j - j2) <= 1:
-                    bonus -= 0.2
-        return bonus
+        if left_pair and right_pair:
+            internals.append((start, end))
+        elif left_pair or right_pair:
+            multibranch.append((start, end))
+        k += 1
+
+    return {"hairpin": hairpins, "internal": internals, "multibranch": multibranch}
+class TurnerEnergyModel:
+    """
+    Simplified, sign-correct RNA ΔG model (kcal/mol).
+    - total_energy(...) returns NEGATIVE values for stable folds.
+    - No per-base unpaired penalties.
+    """
+    def __init__(self):
+        pass
 
     def total_energy(self, seq: str, pairing: List[int]) -> float:
         n = len(seq)
-        E = 0.0
-        paired = np.zeros(n, dtype=bool)
+        # 1) stacking (negative)
+        dg_stack = 0.0
+        for i, j, L in _helices(pairing):
+            # each step in the helix (i+k, j-k) over (i+k+1, j-k-1)
+            for k in range(L-1):
+                left = (seq[i+k], seq[j-k])
+                right = (seq[i+k+1], seq[j-k-1])
+                if not _is_pair(left[0], left[1]) or not _is_pair(right[0], right[1]):
+                    continue
+                dg = STACK_DG.get((left, right), DEFAULT_STACK)
+                dg_stack += dg
 
-        # Mark paired
-        for i in range(n):
-            j = pairing[i]
-            if j > i:
-                paired[i] = paired[j] = True
+        # 2) loops (positive)
+        loops = _loops(seq, pairing)
+        dg_loop = 0.0
+        # hairpin: a + b*ln(L) + tetraloop bonus
+        for il, jr in loops["hairpin"]:
+            L = jr - il + 1
+            if L < 3:
+                # prohibit tiny hairpins heavily
+                dg_loop += 50.0
+                continue
+            a, b = 3.4, 1.3
+            term = a + b * math.log(L)
+            # tetraloop bonuses
+            if L == 4:
+                loop = seq[il:jr+1]
+                if loop.startswith("G") and loop.endswith("A") and loop[2] == "A":
+                    term += TETRA_BONUS["GNRA"]
+                if loop == "UUCG":
+                    term += TETRA_BONUS["UNCG"]
+                if loop == "CUUG":
+                    term += TETRA_BONUS["CUUG"]
+            dg_loop += term
 
-        # Stems & stacking
-        stems = decompose_stems(pairing)
-        for (i, j, L) in stems:
-            if L >= 2:
-                for k in range(L - 1):
-                    E += self._stack_energy(seq, i, j, k)
-            else:
-                # isolated pair fallback
-                E += -1.0  # weak stabilization
+        # internal/bulge: c + d*ln(L) + asymmetry penalty
+        for il, jr in loops["internal"]:
+            L = jr - il + 1
+            c, d = 0.8, 1.1
+            term = c + d * math.log(max(1, L))
+            dg_loop += term
 
-        # Loops
-        loops = loop_regions(pairing)
-        for (i, j, a, b) in loops:
-            if a == 0 and b == 0:
-                E += self._hairpin_energy(seq, i, j)
-            elif a < 0 and b == -1:
-                # multibranch: a = -branches
-                branches = -a
-                # estimate unpaired inside (i, j)
-                unpaired = sum(1 for k in range(i+1, j) if pairing[k] == -1)
-                E += self._multibranch_energy(branches, unpaired)
-            else:
-                # internal/bulge
-                E += self._internal_bulge_energy(a, b)
+        # multibranch: a_mb + b_mb * branches + c_mb * unpaired (very rough)
+        # Here we approximate each multibranch segment as contributing a small cost.
+        for il, jr in loops["multibranch"]:
+            L = jr - il + 1
+            a_mb, b_mb, c_mb = 3.2, 0.4, 0.2
+            term = a_mb + c_mb * L
+            dg_loop += term
 
-        # coaxial heuristic
-        E += self._coaxial_bonus(seq, stems)
-
-        # Mild penalty for unpaired
-        E += self.unpaired_penalty * float((~paired).sum())
-        return E
+        return dg_stack + dg_loop
