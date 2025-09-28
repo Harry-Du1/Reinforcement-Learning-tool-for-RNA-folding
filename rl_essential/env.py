@@ -25,27 +25,55 @@ class RNARLEnv:
     - Reward = ΔE per step (E_{t-1} - E_t); terminal bonus adds -E_T.
       With a correctly signed energy model, lower energies are better.
     """
+    def _would_make_too_small_hairpin(self, i: int, j: int) -> bool:
+        """
+        Return True iff adding (i,j) would create a *new* hairpin whose loop length < 3.
+        Allowed cases that do NOT trigger the hairpin check:
+        - Stack extension: (i+1, j-1) already paired.
+        - Enclosing an existing interior structure: any k in (i,j) is already paired.
+        """
+        # 1) stack extension? then OK regardless of gap
+        if i + 1 < j and self.pairing[i + 1] == j - 1:
+            return False
 
-    def __init__(self, seq: str, energy_model: Optional[TurnerEnergyModel] = None):
+        # 2) enclosing existing interior pairs? then not a hairpin closure
+        for k in range(i + 1, j):
+            if self.pairing[k] != -1:
+                return False
+
+        # 3) otherwise we'd close a fresh hairpin; require loop >= 3
+        loop_len = (j - i - 1)
+        return loop_len < 3
+
+    def __init__(self,
+        seq: str,
+        energy_model: Optional[TurnerEnergyModel] = None,
+        min_pair_separation: int = 4,):
         assert all(b in "AUGC" for b in seq), "Sequence must contain only A/U/G/C"
         self.seq = seq
         self.n = len(seq)
         self.energy = energy_model or TurnerEnergyModel()
+        self.min_pair_separation = int(min_pair_separation)
         self.reset()
 
     # ---------- helpers (relations) ----------
     @staticmethod
     def _cross(i: int, j: int, k: int, l: int) -> bool:
-        """Crossing iff i<k<j<l or k<i<l<j (assume i<j, k<l)."""
         return (i < k < j < l) or (k < i < l < j)
 
     def _pair_allowed(self, i: int, j: int) -> bool:
         if not (0 <= i < j < self.n):
             return False
+
+        # NEW: hard minimum separation (no close pairs *anywhere*)
+        if (j - i) < self.min_pair_separation:
+            return False
+
         # base compatibility
         if not is_valid_pair(self.seq[i], self.seq[j]):
             return False
-        # non-crossing against existing pairs
+
+        # no pseudoknots (non-crossing)
         for k, l in enumerate(self.pairing):
             if l == -1 or not (k < l):
                 continue
